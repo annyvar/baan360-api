@@ -2,10 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Baan360.API.DBContexts;
+using Baan360.API.DomainServices;
+using Baan360.API.Repositories;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.HttpsPolicy;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -23,9 +27,19 @@ namespace Baan360.API
 
         public IConfiguration Configuration { get; }
 
-        // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            #region Dependency Injection (DI)
+            services.AddEntityFrameworkNpgsql()
+           .AddDbContext<DBContext>(options =>
+            {
+                options.UseNpgsql(Configuration["POSTGRES_CONNECTIONSTRING"]);
+            });
+
+            services.AddScoped<IPropertyRepository, PropertyRepository>();
+
+            services.AddTransient<IPropertyService, PropertyService>();
+            #endregion
 
             services.AddControllers();
             services.AddSwaggerGen(c =>
@@ -34,9 +48,10 @@ namespace Baan360.API
             });
         }
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            UpdateDatabase(app);
+
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -44,16 +59,28 @@ namespace Baan360.API
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Baan360.API v1"));
             }
 
-            app.UseHttpsRedirection();
-
             app.UseRouting();
 
             app.UseAuthorization();
+            app.UseAuthentication();
 
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
             });
+        }
+
+        private static void UpdateDatabase(IApplicationBuilder app)
+        {
+            using (var serviceScope = app.ApplicationServices
+                .GetRequiredService<IServiceScopeFactory>()
+                .CreateScope())
+            {
+                using (var context = serviceScope.ServiceProvider.GetService<DBContext>())
+                {
+                    context.Database.Migrate();
+                }
+            }
         }
     }
 }
